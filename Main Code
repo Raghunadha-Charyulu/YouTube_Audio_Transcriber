@@ -1,0 +1,91 @@
+#install the libraries
+pip install whisper
+pip install --upgrade --no-cache-dir openai-whisper
+pip install yt-dlp
+
+#importing the required libraries
+import yt_dlp
+import whisper
+import os
+
+def download_audio_from_youtube(url):
+    """
+    Downloads audio from a YouTube video URL using yt-dlp and returns the file path.
+    """
+    # Use yt-dlp to download audio only
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'outtmpl': 'temp_audio.%(ext)s',  # Temporary file output
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',  # Changed key to FFmpegExtractAudio
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }],
+    }
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        result = ydl.extract_info(url, download=True)
+        audio_path = 'temp_audio.mp3'  # The file name used in the options
+        return audio_path
+
+def transcribe_audio_with_stanzas(audio_path, language="te", gap_threshold=2.0):
+    """
+    Transcribes audio to lyrics and formats them into stanzas based on timing gaps.
+    """
+    print("Loading Whisper model...")
+    model = whisper.load_model("large")
+
+    print(f"Transcribing audio in {language}...")
+    result = model.transcribe(audio_path, language=language, task="transcribe", verbose=False)
+
+    # Process segments for stanza formatting
+    segments = result["segments"]
+    lyrics = []
+    previous_end_time = 0  # Track end time of previous segment
+
+    print("\n--- Segment Details ---")
+    for segment in segments:
+        start_time = segment["start"]
+        end_time = segment["end"]
+        text = segment["text"].strip()
+
+        print(f"Segment: {start_time:.2f}s - {end_time:.2f}s | Text: {text}")
+
+        # Insert a blank line if there's a significant gap between segments
+        if start_time - previous_end_time > gap_threshold:
+            lyrics.append("")  # Blank line to separate stanzas
+
+        lyrics.append(text)
+        previous_end_time = end_time
+
+    # Join all lines with newline characters
+    formatted_lyrics = "\n".join(lyrics)
+    return formatted_lyrics
+
+def main():
+    # Ask user for YouTube URL
+    youtube_url = input("Enter the YouTube URL: ")
+
+    # Download the audio from YouTube
+    print("Downloading audio from YouTube...")
+    audio_path = download_audio_from_youtube(youtube_url)
+    print(f"Downloaded audio to {audio_path}")
+
+    # Specify language code for transcription (default: Telugu "te")
+    language_code = input("Enter the language code (e.g., 'te' for Telugu, 'pa' for Punjabi): ").strip()
+    gap_threshold_seconds = 2.0  # Adjust this value to refine stanza detection
+
+    # Transcribe the audio to lyrics with stanzas
+    lyrics_with_stanzas = transcribe_audio_with_stanzas(
+        audio_path, language=language_code, gap_threshold=gap_threshold_seconds
+    )
+
+    print("\nFormatted Lyrics (in stanzas):\n")
+    print(lyrics_with_stanzas)
+
+    # Clean up by deleting the temporary audio file
+    if os.path.exists(audio_path):
+        os.remove(audio_path)
+
+if __name__ == "__main__":
+    main()
